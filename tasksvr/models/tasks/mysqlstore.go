@@ -13,7 +13,7 @@ import (
 
 //SQL to insert a new task row
 //use `?` for column values that we will get at runtime
-const sqlInsertTask = ``
+const sqlInsertTask = `insert `
 
 //SQL to insert a tag for a task
 const sqlInsertTag = ``
@@ -58,7 +58,32 @@ func NewMySQLStore(db *sql.DB) *MySQLStore {
 
 //Insert inserts a new task into the database
 func (s *MySQLStore) Insert(nt *NewTask) (*Task, error) {
-	panic("TODO:")
+	task, err := nt.ToTask()
+	if err != nil {
+		return nil, err
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	_, err = tx.Exec(sqlInsertTag, task.ID, task.Title, task.Completed, task.CreatedAt)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	for _, tag := range task.Tags {
+		_, err = tx.Exec(sqlInsertTag, task.ID, tag)
+		if err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+	}
+	err = tx.Commit()
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	return task, nil
 }
 
 //GetAll gets all tasks with a particular completed state

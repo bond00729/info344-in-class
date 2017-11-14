@@ -1,6 +1,8 @@
 package main
 
 import "time"
+import "sync"
+import "fmt"
 
 type entry struct {
 	value     string
@@ -11,21 +13,46 @@ type entry struct {
 type Cache struct {
 	entries map[string]*entry
 	//TODO: protect this for concurrent use!
+	mx sync.RWMutex
 }
 
 //NewCache constructs a new Cache object
 func NewCache() *Cache {
-	return &Cache{
+	c := &Cache{
 		entries: map[string]*entry{},
 	}
+	go c.janitor()
+	return c
 }
 
 //Set adds a key/value to the cache
 func (c *Cache) Set(key string, value string, timeToLive time.Duration) {
+	c.mx.Lock()
+	defer c.mx.Unlock()
 	c.entries[key] = &entry{value, time.Now().Add(timeToLive)}
 }
 
 //Get gets the value associated with a key
 func (c *Cache) Get(key string) (string, bool) {
-	//TODO: implement this
+	c.mx.RLock()
+	defer c.mx.RUnlock()
+	if entry, found := c.entries[key]; found {
+		return entry.value, true
+	}
+	return "", false
+}
+
+func (c *Cache) janitor() {
+	for {
+		time.Sleep(time.Second)
+		now := time.Now()
+		c.mx.Lock()
+		for key, entry := range c.entries {
+			if entry.expiresAt.Before(now) {
+				fmt.Printf("purging key %s \n", key)
+				delete(c.entries, key)
+			}
+		}
+		c.mx.Unlock()
+	}
 }
